@@ -1,85 +1,130 @@
-# STRING_app
+﻿# STRING_app
 
+ローカルに構築した STRING SQLite DB から、指定した遺伝子/タンパク質のサブネットワークを抽出・可視化する Streamlit アプリ（MVP）。
+入力は gene symbol / UniProt / STRING protein_id など混在OKで、機能的ネットワーク（protein.links）と物理的相互作用（protein.physical.links）を切り替えて表示できます。
 
-### protein.physical.links
+## UI Preview
+![STRING ローカル相互作用ネットワーク（MVP）](docs/image.png)
+*例: TP53 を 1-hop 展開（physical）で可視化*
 
-protein.physical.links(=*.protein.physical.links.vXX.X.txt.gz)には、STRINGが定義する「物理的相互作用サブネットワーク」のエッジが入っている。
-protein.linksよりも直接結合や同一複合体など、物理的に接触し得る関係に寄せたネットワーク。
+## 主な機能
+- 混在IDの解決（gene symbol / UniProt / STRING protein_id）
+- 機能的ネットワーク（functional）/ 物理的ネットワーク（physical）の切替
+- スコア閾値でエッジをフィルタ
+- 「誘導部分グラフ」または「1-hop展開」でサブネットワーク作成
+- PyVis によるインタラクティブ可視化（ノードサイズ=degree、エッジ幅=score）
+- nodes / edges を CSV でダウンロード
 
+## 動作環境
+- Python 3.9（venvで実行確認）
+- OS: Windows でのみ動作確認（macOS/Linux 未検証）
+- 依存関係: `requirements.txt`（streamlit / pyvis / pandas / networkx）
+- DBサイズの目安: ヒト v12.0 で約 2.3GB（環境により変動）
 
+## クイックスタート
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+streamlit run app/app.py
+```
 
+## データ準備
+本リポジトリでは SQLite DB / 生データは `.gitignore` で除外されています。
+以下の STRING データを取得し、`data/raw/` に配置してください。
 
+必須ファイル（例: ヒト 9606 / v12.0）:
+- `9606.protein.info.v12.0.txt.gz`
+- `9606.protein.aliases.v12.0.txt.gz`
+- `9606.protein.links.v12.0.txt.gz`
+- `9606.protein.physical.links.v12.0.txt.gz`（物理ネットワークを使う場合）
 
-## 1) protein.physical.links は何のデータか
+## DB作成（生データからSQLiteを作る）
+既に `data/string.sqlite` がある場合はスキップできます。
 
-* **protein.physical.links.*.txt.gz** は、STRING が提供する **“physical subnetwork（物理的相互作用ネットワーク）”** のリンク集合です（タンパク質ペアとスコア）。([STRING][1])
-* 物理サブネットワークは、主に **experiments / database / textmining** の3チャネル由来の情報を使って構成され、通常の「機能的関連（functional association）」ネットワークとは **スコア計算が異なる** と明記されています。([PMC][2])
-* “detailed” 版は **チャネル別サブスコア付き**、 “full” 版は **direct vs interologs（同種内の直接証拠か、オルソログ転移か）** の区別付きです。([STRING][1])
+```powershell
+python scripts/build_db.py `
+  --db data/string.sqlite `
+  --info data/raw/9606.protein.info.v12.0.txt.gz `
+  --aliases data/raw/9606.protein.aliases.v12.0.txt.gz `
+  --links data/raw/9606.protein.links.v12.0.txt.gz `
+  --physical data/raw/9606.protein.physical.links.v12.0.txt.gz `
+  --overwrite
+```
 
-## 2) experiments / database / textmining の違い（STRING内での定義）
+- `--links` は `protein.links`（functional）を想定
+- `--physical` を省略すると物理ネットワークは作成されません
+- `combined_score` 列（0..1000）を使用します
 
-STRING v12 系の説明（NAR/PMC）に沿うと、概ねこう分かれます。([PMC][2])
+## アプリの使い方
+1. `streamlit run app/app.py` を実行
+2. サイドバーで以下を設定
+   - DBパス（既定: `data/string.sqlite`）
+   - ネットワーク種別（functional / physical）
+   - スコア閾値（0.0〜1.0）
+   - モード（誘導部分グラフ / 1-hop 展開）
+   - 最大ノード数（max_nodes）
+   - `taxon_id`（任意: 例 9606）
+3. テキストエリアにIDを入力（改行/カンマ区切り）
+   - 例: `TP53`, `BRCA1`, `P04637`, `9606.ENSP00000354587`
+4. 実行ボタンで可視化
 
-* **experiments（実験）**
-  「相互作用（会合）を見つける目的で行われた実験」に由来するエビデンスを、BioGRID・DIP・PDB・IntAct/IMEx などの一次DBから取り込み。([PMC][2])
+### モードの違い
+- 誘導部分グラフ: 入力ID同士の関係のみを抽出
+- 1-hop 展開: 入力IDに直接つながる近傍ノードを加えて拡張
+  近傍は `score` 合計が高い順で追加され、`max_nodes` まで制限されます
 
-* **database（知識DB、いわゆる“textbook knowledge”）**
-  KEGG・Reactome・MetaCyc・Complex Portal・GO Complexes 等、キュレーション済み知識ベースからの複合体・経路・機能的つながりを取り込み。([PMC][2])
+## 出力
+- PyVis グラフ（ホバーで `preferred_name / protein_id / degree / score`）
+- nodes / edges のテーブル
+- nodes.csv / edges.csv のダウンロード
 
-* **textmining（文献テキストマイニング）**
-  PMC OA（本文）、PubMed 抄録、OMIM/SGD の要約テキスト等からタンパク質名の共起・関係抽出を行い、頻度などに基づいてスコア化。([PMC][2])
+## スコアについて
+- STRING の `combined_score`（0..1000）を保持
+- UI の閾値は 0.0〜1.0 で指定し、内部で 0〜1000 に変換
 
-（補足）物理サブネットワークは、この3チャネル（experiments/database/textmining）からも作られますが、**スコアの推定法自体が functional network と違う**、というのが重要点です。([PMC][2])
+## SQLite スキーマ
+- `proteins(protein_id, preferred_name, annotation)`
+- `aliases(alias, protein_id, source, taxon_id)`
+- `edges_func(p1, p2, score_int)`
+- `edges_phys(p1, p2, score_int)`
 
-## 3) まず「通常の STRING スコア」はどういう意味か（functional network）
+補足:
+- エッジは無向グラフのため `p1 < p2` に正規化して保存
 
-* STRING の各スコアは **相互作用の“強さ”ではなく“真である確からしさ（confidence）”** を 0〜1 で表す、という立て付けです。([STRING][3])
-* 各エビデンスはチャネルごとにまずスコア化され、（代表例として）**KEGG パスウェイ同一マップへの共所属**などを “ground truth” としたベンチマークでキャリブレーションされ、最後に **combined score** に統合されます。([PMC][2])
+## ID 解決ロジック
+- まず `proteins.protein_id` で完全一致
+- 不一致の場合は `aliases.alias` を検索
+- 複数ヒット時は `source` の優先順位で代表を選択し、他候補を表示
 
-### combined score の統合式（重要）
+## プロジェクト構成
+```
+app/
+  app.py      # Streamlit UI
+  db.py       # SQLite アクセス/ID解決/グラフ構築
+  viz.py      # PyVis 可視化
+scripts/
+  build_db.py # 生データからSQLiteを作成
+data/
+  raw/        # STRING 生データ（.txt.gz）
+  string.sqlite
+```
 
-STRING Help では、各チャネルスコア (s_i) から **prior (p=0.041)** を外して結合し、最後に prior を戻す形が明示されています。([STRING][4])
+## 既知の制約・注意点
+- IDが曖昧な場合は自動で候補が選ばれます（必要なら `taxon_id` を指定）
+- ノード数が多いと描画が重くなります（閾値を上げる/`max_nodes` を下げる）
+- `edges_phys` は `--physical` を指定してDBを作成しないと存在しません
 
-* prior除去: ((s_i-p)/(1-p))
-* 結合: (1-\prod (1-s_i'))（逐次計算の形で説明）
-* prior復元: (s + p(1-s)) ([STRING][4])
+## テスト
+- 現状は自動テスト未整備
 
-## 4) 「physical interaction の確信度」はどう計算されるのか（ポイント）
+## データ取得元 / ライセンス / 引用
+- Downloads（公式）: https://string-db.org/cgi/download
+- Licensing（CC BY 4.0）: https://string-db.org/cgi/access.pl?footer_active_subpage=licensing
+- Citation（How to cite STRING）: https://string-db.org/help/faq/
+- 参考論文: https://academic.oup.com/nar/article/51/D1/D638/6825349
+- リポジトリのライセンス: 要確認
 
-STRING 2021 の更新論文で、**physical interaction score（物理スコア）**の導出が説明されています。([PMC][5])
-
-要点だけ抜くと：
-
-1. **gold standard（正解データ）として信頼できるタンパク質複合体集合が必要**
-   STRING は、十分な量と質のある gold standard として **Complex Portal の“酵母複合体”**を使う、としています。([PMC][5])
-
-2. **実験由来の相互作用から、純粋に機能的（非物理）になりがちなものを除外**
-   具体的に、**遺伝学的干渉（genetic interference）だけに基づく相互作用は除外**し、残りを物理相互作用の候補としてベンチマークします。([PMC][5])
-
-3. **“同一複合体に一緒に入る確率”として physical score を定義**
-   物理相互作用では「同じ複合体に同時に含まれる」ことを真陽性の基準にし、巨大複合体でペアが爆増して過大評価されないよう、複合体内の次数（degree）に基づく重み付けで補正しながらベンチマークする、と説明されています。([PMC][5])
-
-4. **gold standard に直接かからない部分は “functional↔physical の関係”でキャリブレーションして推定し、他生物にも適用**
-   gold standard から得た対応関係（キャリブレーション曲線）を使って、未カバー部分や他種にも physical スコアを割り当てる（酵母で得た校正を他種へ適用）流れです。([PMC][5])
-
-つまり、「physical.links のスコア」は単に experiments/database/textmining の合算ではなく、**“複合体共所属（物理）”を基準にした別の確率校正**が入っています。([PMC][5])
-
-## 5) ローカルで見るときの実務的な対応
-
-* ダウンロードページ上、links 系ファイルは **スコアが 1000 倍（整数）**で入る注意があります。([STRING][1])
-
-  * 例：`872` は 0.872 相当。([STRING][4])
-* “detailed” のサブスコア列名は、FAQで **nscore/fscore/pscore/ascore/escore/dscore/tscore** などの意味がまとまっています（physical.detailed でも列名がこれに沿うことが多い）。([STRING][4])
-* direct vs interologs を明確に分けたい場合は “full” を使うのが前提です（physical でも full が提供されています）。([STRING][1])
-
-以上が、STRING の **physical.links の中身**と、**物理的相互作用スコアの作り方（考え方）**、および **実験・知識DB・文献の違い**の整理です。
-
-[1]: https://string-db.org/cgi/download "Downloads - STRING functional protein association networks"
-[2]: https://pmc.ncbi.nlm.nih.gov/articles/PMC9825434/ "
-            The STRING database in 2023: protein–protein association networks and functional enrichment analyses for any sequenced genome of interest - PMC
-        "
-[3]: https://string-db.org/cgi/info?utm_source=chatgpt.com "Info - STRING functional protein association networks"
-[4]: https://string-db.org/help/faq/ "FAQ - STRING Help"
-[5]: https://pmc.ncbi.nlm.nih.gov/articles/PMC7779004/ "
-            The STRING database in 2021: customizable protein–protein networks, and functional characterization of user-uploaded gene/measurement sets - PMC
-        "
+## 要確認事項（ここを埋めれば完成）
+- リポジトリのライセンス
+- `scripts/backtest.py` / `scripts/ranmdom.py` をREADMEに含めるか（別用途の可能性）
