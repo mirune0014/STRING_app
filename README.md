@@ -105,6 +105,10 @@ app/
   viz.py      # PyVis 可視化
 scripts/
   build_db.py # 生データからSQLiteを作成
+experiments/
+  finance/    # 本体とは別の金融系検証スクリプト
+docs/
+  image.png   # UI スクリーンショット
 data/
   raw/        # STRING 生データ（.txt.gz）
   string.sqlite
@@ -118,13 +122,11 @@ data/
 ## テスト
 - 現状は自動テスト未整備
 
-## データ取得元 / ライセンス / 引用
+## データ取得元 / 引用
 - Downloads（公式）: https://string-db.org/cgi/download
-- Licensing（CC BY 4.0）: https://string-db.org/cgi/access.pl?footer_active_subpage=licensing
 - Citation（How to cite STRING）: https://string-db.org/help/faq/
 - 参考論文: https://academic.oup.com/nar/article/51/D1/D638/6825349
-- リポジトリのライセンス: 要確認
 
-## 要確認事項（ここを埋めれば完成）
-- リポジトリのライセンス
-- `scripts/backtest.py` / `scripts/ranmdom.py` をREADMEに含めるか（別用途の可能性）
+## ライセンス
+- STRING データのライセンス: CC BY 4.0（公式: https://string-db.org/cgi/access.pl?footer_active_subpage=licensing）
+- このリポジトリのソースコードには、現時点でライセンスファイルが設定されていません
