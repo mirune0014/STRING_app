@@ -129,4 +129,4 @@ data/
 
 ## ライセンス
 - STRING データのライセンス: CC BY 4.0（公式: https://string-db.org/cgi/access.pl?footer_active_subpage=licensing）
-- このリポジトリのソースコードには、現時点でライセンスファイルが設定されていません
+- コードのライセンスは未設定です（LICENSEファイル未作成）
