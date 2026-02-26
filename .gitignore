@@ -4,3 +4,12 @@ __pycache__/
 *.sqlite
 *.csv
 *.txt.gz
+.DS_Store
+.streamlit/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+*.log
+respons.md
+docs/screenshot.png
